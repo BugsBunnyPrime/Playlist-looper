@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Looper">
+<meta name="theme-color" content="#0f1115">
+<title>Playlist Looper</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-180.png">
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1f232c; --line: #2a2f3a;
+    --text: #e8eaf0; --muted: #8b93a5; --accent: #ff4d5a; --accent2: #ff6b76; --ok: #3ecf8e;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent; }
+  .wrap { max-width: 1100px; margin: 0 auto;
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 32px max(16px, env(safe-area-inset-left)); }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  header h1 { font-size: 20px; margin: 0; font-weight: 650; letter-spacing: -.01em; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .dot.live { background: var(--accent); box-shadow: 0 0 0 4px rgba(255,77,90,.18); }
+  .grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+  .video { position: relative; aspect-ratio: 16/9; background: #000; border-radius: 10px; overflow: hidden; }
+  .video iframe, .video #player { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 20px; }
+  .now { margin: 12px 2px 4px; min-height: 44px; }
+  .now .pl { color: var(--muted); font-size: 13px; }
+  .now .title { font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  button { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 14px; cursor: pointer; min-height: 44px; display: inline-flex; align-items: center; gap: 6px; }
+  button:hover { border-color: #3a4150; }
+  button:active { transform: scale(.97); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover { background: var(--accent2); }
+  button.icon { padding: 10px; min-width: 44px; justify-content: center; }
+  button svg { width: 20px; height: 20px; fill: currentColor; }
+  .opts { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); }
+  .opts label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+  select, input[type=text] { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; min-height: 44px; width: 100%; }
+  select { width: auto; }
+  input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+  h2 { font-size: 15px; margin: 0 0 10px; font-weight: 650; }
+  form { display: grid; gap: 8px; margin-bottom: 14px; }
+  form .row { display: flex; gap: 8px; }
+  form .row input { flex: 1; }
+  .msg { font-size: 13px; min-height: 18px; color: var(--muted); }
+  .msg.err { color: var(--accent2); }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  li { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; border-radius: 10px; background: var(--panel2); border: 1px solid transparent; }
+  li.active { border-color: var(--accent); }
+  li .meta { flex: 1; min-width: 0; cursor: pointer; }
+  li .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  li .id { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  li button { min-height: 36px; padding: 6px 9px; }
+  li button svg { width: 16px; height: 16px; }
+  .badge { font-size: 11px; color: var(--ok); font-weight: 600; }
+  .foot { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 14px; }
+  .nudge { position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: var(--accent); color: #fff; padding: 12px 18px; border-radius: 999px; font-weight: 600;
+    box-shadow: 0 8px 30px rgba(0,0,0,.4); display: none; z-index: 10; max-width: calc(100% - 32px); text-align: center; }
+  .nudge.show { display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><span class="dot" id="dot"></span><h1>Playlist Looper</h1></header>
+
+  <div class="grid">
+    <section class="card">
+      <div class="video">
+        <div id="player"></div>
+        <div class="empty" id="empty">Add a YouTube playlist link on the right to get started.</div>
+      </div>
+
+      <div class="now">
+        <div class="pl" id="nowPl">—</div>
+        <div class="title" id="nowTitle">Nothing playing</div>
+      </div>
+
+      <div class="controls">
+        <button class="primary" id="startBtn">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><span>Start</span>
+        </button>
+        <button class="icon" id="prevBtn" title="Previous track">
+          <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+        </button>
+        <button class="icon" id="playBtn" title="Play / pause">
+          <svg viewBox="0 0 24 24" id="playIcon"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button class="icon" id="nextBtn" title="Next track">
+          <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+        </button>
+        <button class="icon" id="muteBtn" title="Mute / unmute">
+          <svg viewBox="0 0 24 24" id="muteIcon"></svg>
+        </button>
+        <button id="nextPlBtn" title="Skip to next playlist">Next playlist ⤼</button>
+        <span class="pl" id="trackPos" style="color:var(--muted);font-size:13px;margin-left:auto"></span>
+      </div>
+
+      <div class="opts">
+        <label><input type="checkbox" id="shuffle"> Shuffle tracks</label>
+        <label>When a playlist ends:
+          <select id="loopMode">
+            <option value="all">Go to next playlist (loop all)</option>
+            <option value="one">Repeat the same playlist</option>
+          </select>
+        </label>
+        <label>Speed:
+          <select id="speed">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="0.75">0.75×</option>
+            <option value="1">1× (normal)</option>
+            <option value="1.25">1.25×</option>
+            <option value="1.5">1.5×</option>
+            <option value="1.75">1.75×</option>
+            <option value="2">2×</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="awake"> Keep screen awake</label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Playlists</h2>
+      <form id="addForm" autocomplete="off">
+        <input type="text" id="urlIn" placeholder="Paste playlist link (…?list=PL…)" inputmode="url">
+        <div class="row">
+          <input type="text" id="nameIn" placeholder="Name (optional)">
+          <button class="primary" type="submit">Add</button>
+        </div>
+        <div class="msg" id="msg"></div>
+      </form>
+      <ul id="list"></ul>
+      <div class="foot">
+        <button id="shareBtn" title="Copy a link that includes your playlists — open it on another device">Copy link with playlists</button>
+      </div>
+      <p class="hint">Public or unlisted playlists only. No YouTube login needed. Playlists play in order, and the whole queue loops forever.</p>
+    </section>
+  </div>
+</div>
+<div class="nudge" id="nudge">Tap the video to continue playing</div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const KEY = 'playlist-looper-v1';
+  const store = {
+    load(d) { try { const v = localStorage.getItem(KEY); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } },
+    save(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch {} }
+  };
+  let state = store.load({ playlists: [], current: 0, shuffle: false, loopMode: 'all', awake: true, speed: 1, muted: false });
+  const save = () => store.save(state);
+
+  // ---- Import playlists from a shared link (#p=...) ----
+  try {
+    const m = location.hash.match(/[#&]p=([^&]+)/);
+    if (m) {
+      const json = decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/'))));
+      const incoming = JSON.parse(json);
+      if (Array.isArray(incoming)) {
+        for (const p of incoming) {
+          if (p && p.id && !state.playlists.some(x => x.id === p.id)) state.playlists.push({ id: p.id, name: p.name || '' });
+        }
+        save();
+      }
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  } catch {}
+
+  // ---- Parsing ----
+  function parsePlaylistId(text) {
+    text = (text || '').trim();
+    if (!text) return null;
+    try {
+      const u = new URL(text.startsWith('http') ? text : 'https://' + text);
+      const l = u.searchParams.get('list');
+      if (l) return l;
+    } catch {}
+    if (/^[A-Za-z0-9_-]{12,}$/.test(text)) return text;
+    return null;
+  }
+
+  // ---- UI ----
+  const els = {
+    list: $('#list'), msg: $('#msg'), empty: $('#empty'), nowPl: $('#nowPl'), nowTitle: $('#nowTitle'),
+    trackPos: $('#trackPos'), dot: $('#dot'), nudge: $('#nudge'), playIcon: $('#playIcon'),
+    shuffle: $('#shuffle'), loopMode: $('#loopMode'), awake: $('#awake'), speed: $('#speed')
+  };
+  els.shuffle.checked = state.shuffle;
+  els.speed.value = String(state.speed);
+  if (els.speed.value !== String(state.speed)) { state.speed = 1; els.speed.value = '1'; }
+  els.loopMode.value = state.loopMode;
+  els.awake.checked = state.awake;
+
+  const nameOf = (p, i) => p.name || `Playlist ${i + 1}`;
+  const ICON = {
+    up: '<svg viewBox="0 0 24 24"><path d="M7 14l5-5 5 5z"/></svg>',
+    down: '<svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>',
+    del: '<svg viewBox="0 0 24 24"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>'
+  };
+
+  function render() {
+    els.list.innerHTML = '';
+    state.playlists.forEach((p, i) => {
+      const li = document.createElement('li');
+      if (i === state.current) li.className = 'active';
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.title = 'Play this playlist';
+      meta.innerHTML = `<div class="name"></div><div class="id"></div>`;
+      meta.querySelector('.name').textContent = nameOf(p, i);
+      meta.querySelector('.id').textContent = p.id;
+      if (i === state.current && isPlaying) meta.querySelector('.name').insertAdjacentHTML('beforeend', ' <span class="badge">● playing</span>');
+      meta.onclick = () => { state.current = i; save(); loadCurrent(true); };
+      li.appendChild(meta);
+      const mk = (html, title, fn) => { const b = document.createElement('button'); b.innerHTML = html; b.title = title; b.onclick = fn; li.appendChild(b); };
+      mk(ICON.up, 'Move up', () => move(i, -1));
+      mk(ICON.down, 'Move down', () => move(i, 1));
+      mk(ICON.del, 'Remove', () => removeAt(i));
+      els.list.appendChild(li);
+    });
+    els.empty.style.display = state.playlists.length ? 'none' : 'grid';
+    els.dot.classList.toggle('live', isPlaying);
+    $('#muteIcon').innerHTML = state.muted
+      ? '<path d="M16.5 12A4.5 4.5 0 0 0 14 8v2.2l2.45 2.45c.03-.2.05-.42.05-.65zM19 12c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.8 8.8 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a9 9 0 0 0 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/>'
+      : '<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.47 4.47 0 0 0 2.5-4zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>';
+    $('#muteBtn').classList.toggle('primary', state.muted);
+    els.playIcon.innerHTML = isPlaying
+      ? '<path d="M6 5h4v14H6zm8 0h4v14h-4z"/>'
+      : '<path d="M8 5v14l11-7z"/>';
+  }
+
+  function move(i, d) {
+    const j = i + d;
+    if (j < 0 || j >= state.playlists.length) return;
+    const arr = state.playlists;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    if (state.current === i) state.current = j; else if (state.current === j) state.current = i;
+    save(); render();
+  }
+
+  function removeAt(i) {
+    const wasCurrent = i === state.current;
+    state.playlists.splice(i, 1);
+    if (state.current > i || state.current >= state.playlists.length) state.current = Math.max(0, state.current - 1);
+    save(); render();
+    if (wasCurrent && ready) {
+      if (state.playlists.length) loadCurrent(isPlaying);
+      else { player.stopVideo(); setNow('—', 'Nothing playing', ''); }
+    }
+  }
+
+  function setNow(pl, title, pos) {
+    els.nowPl.textContent = pl; els.nowTitle.textContent = title; els.trackPos.textContent = pos;
+  }
+
+  $('#addForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const id = parsePlaylistId($('#urlIn').value);
+    if (!id) { els.msg.textContent = 'That doesn\'t look like a playlist link. It should contain "list=".'; els.msg.className = 'msg err'; return; }
+    if (state.playlists.some(p => p.id === id)) { els.msg.textContent = 'That playlist is already in the queue.'; els.msg.className = 'msg err'; return; }
+    state.playlists.push({ id, name: $('#nameIn').value.trim() });
+    save();
+    $('#urlIn').value = ''; $('#nameIn').value = '';
+    els.msg.textContent = 'Added.'; els.msg.className = 'msg';
+    render();
+    if (ready && state.playlists.length === 1) { state.current = 0; loadCurrent(false); }
+  });
+
+  els.shuffle.onchange = () => { state.shuffle = els.shuffle.checked; save(); if (ready) { try { player.setShuffle(state.shuffle); } catch {} } };
+  els.loopMode.onchange = () => { state.loopMode = els.loopMode.value; save(); };
+  els.speed.onchange = () => { state.speed = parseFloat(els.speed.value) || 1; save(); applySpeed(); };
+
+  function applyMute() {
+    if (!ready) return;
+    try {
+      if (state.muted && !player.isMuted()) player.mute();
+      else if (!state.muted && player.isMuted()) player.unMute();
+    } catch {}
+  }
+
+  // YouTube resets the speed on some videos, so it is re-applied every time a track starts.
+  function applySpeed() {
+    applyMute();
+    if (!ready) return;
+    try { if (player.getPlaybackRate() !== state.speed) player.setPlaybackRate(state.speed); } catch {}
+  }
+  els.awake.onchange = () => { state.awake = els.awake.checked; save(); state.awake ? keepAwake() : releaseAwake(); };
+
+  $('#shareBtn').onclick = async () => {
+    const data = btoa(unescape(encodeURIComponent(JSON.stringify(state.playlists))))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const url = location.origin + location.pathname + '#p=' + data;
+    try { await navigator.clipboard.writeText(url); els.msg.textContent = 'Link copied. Open it on your other device.'; els.msg.className = 'msg'; }
+    catch { prompt('Copy this link:', url); }
+  };
+
+  // ---- Wake lock (keeps iPad screen on so playback doesn't stop) ----
+  let wakeLock = null;
+  async function keepAwake() {
+    if (!state.awake || wakeLock || !('wakeLock' in navigator)) return;
+    try { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } catch {}
+  }
+  function releaseAwake() { try { wakeLock && wakeLock.release(); } catch {} wakeLock = null; }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && isPlaying) keepAwake(); });
+
+  // ---- YouTube player ----
+  let player, ready = false, isPlaying = false, pendingShuffle = false, errorStreak = 0, nudgeTimer = null;
+
+  window.onYouTubeIframeAPIReady = () => {
+    player = new YT.Player('player', {
+      host: 'https://www.youtube-nocookie.com',
+      playerVars: { playsinline: 1, rel: 0, modestbranding: 1, origin: location.origin },
+      events: { onReady, onStateChange, onError }
+    });
+  };
+
+  function onReady() {
+    ready = true;
+    if (state.playlists.length) loadCurrent(false);
+    render();
+  }
+
+  function loadCurrent(autoplay) {
+    const p = state.playlists[state.current];
+    if (!p || !ready) return;
+    const opts = { list: p.id, listType: 'playlist', index: 0 };
+    pendingShuffle = state.shuffle;
+    autoplay ? player.loadPlaylist(opts) : player.cuePlaylist(opts);
+    setNow(nameOf(p, state.current), 'Loading…', '');
+    render();
+    if (autoplay) armNudge();
+  }
+
+  function nextPlaylist() {
+    if (!state.playlists.length) return;
+    if (state.loopMode === 'all') state.current = (state.current + 1) % state.playlists.length;
+    save();
+    loadCurrent(true);
+  }
+
+  // iOS can block auto-start after switching playlists — if it does, ask for one tap.
+  function armNudge() {
+    clearTimeout(nudgeTimer);
+    nudgeTimer = setTimeout(() => { if (!isPlaying) els.nudge.classList.add('show'); }, 5000);
+  }
+
+  function updateNow() {
+    const p = state.playlists[state.current];
+    let title = '';
+    try { title = (player.getVideoData() || {}).title || ''; } catch {}
+    let pos = '';
+    try {
+      const list = player.getPlaylist();
+      const idx = player.getPlaylistIndex();
+      if (list && idx >= 0) pos = `Track ${idx + 1} / ${list.length}`;
+    } catch {}
+    setNow(p ? nameOf(p, state.current) : '—', title || 'Ready', pos);
+  }
+
+  function onStateChange(e) {
+    const S = YT.PlayerState;
+    if (e.data === S.PLAYING) {
+      isPlaying = true; errorStreak = 0;
+      els.nudge.classList.remove('show'); clearTimeout(nudgeTimer);
+      keepAwake();
+      applySpeed();
+      // YouTube can reset the rate shortly after a new track starts, so check again.
+      setTimeout(applySpeed, 600); setTimeout(applySpeed, 1800);
+      if (pendingShuffle) {
+        pendingShuffle = false;
+        try { player.setShuffle(true); player.playVideoAt(0); } catch {}
+      }
+    } else if (e.data === S.BUFFERING) {
+      applySpeed();
+    } else if (e.data === S.PAUSED || e.data === S.CUED) {
+      isPlaying = false;
+    } else if (e.data === S.ENDED) {
+      isPlaying = false;
+      let atEnd = true;
+      try {
+        const list = player.getPlaylist();
+        const idx = player.getPlaylistIndex();
+        atEnd = !list || idx >= list.length - 1;
+      } catch {}
+      if (atEnd) nextPlaylist();
+    }
+    updateNow(); render();
+  }
+
+  function onError(e) {
+    // 2 = bad playlist/video id, 5 = HTML5 error, 100 = removed/private, 101/150 = embedding disabled
+    errorStreak++;
+    if (errorStreak > 25) { setNow('Stopped', 'Too many videos in a row failed to play. Check your playlists.', ''); return; }
+    setTimeout(() => {
+      let list = null, idx = -1;
+      try { list = player.getPlaylist(); idx = player.getPlaylistIndex(); } catch {}
+      if (e.data === 2 || !list || idx >= list.length - 1) nextPlaylist();
+      else player.nextVideo();
+    }, 1200);
+  }
+
+  // ---- Controls ----
+  $('#startBtn').onclick = () => {
+    if (!ready) return;
+    if (!state.playlists.length) { $('#urlIn').focus(); return; }
+    keepAwake();
+    if (player.getPlayerState && player.getPlayerState() === YT.PlayerState.CUED) player.playVideo();
+    else loadCurrent(true);
+    armNudge();
+  };
+  $('#muteBtn').onclick = () => { state.muted = !state.muted; save(); applyMute(); render(); };
+  document.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 'm' && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) $('#muteBtn').click();
+  });
+  $('#playBtn').onclick =() => { if (!ready) return; isPlaying ? player.pauseVideo() : player.playVideo(); };
+  $('#prevBtn').onclick = () => ready && player.previousVideo();
+  $('#nextBtn').onclick = () => {
+    if (!ready) return;
+    let list = null, idx = -1;
+    try { list = player.getPlaylist(); idx = player.getPlaylistIndex(); } catch {}
+    if (list && idx >= list.length - 1) nextPlaylist(); else player.nextVideo();
+  };
+  $('#nextPlBtn').onclick = () => {
+    if (!state.playlists.length) return;
+    state.current = (state.current + 1) % state.playlists.length; save(); loadCurrent(true);
+  };
+  els.nudge.onclick = () => { els.nudge.classList.remove('show'); ready && player.playVideo(); };
+
+  render();
+
+  // Save the app onto the device (needs https or localhost).
+  if ('serviceWorker' in navigator && window.isSecureContext) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+})();
+</script>
+</body>
+</html>
