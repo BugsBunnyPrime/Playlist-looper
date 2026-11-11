@@ -83,7 +83,7 @@
     <section class="card">
       <div class="video">
         <div id="player"></div>
-        <div class="empty" id="empty">Add a YouTube playlist link on the right to get started.</div>
+        <div class="empty" id="empty">Add a YouTube playlist or video link to get started.</div>
       </div>
 
       <div class="now">
@@ -138,7 +138,7 @@
     <section class="card">
       <h2>Playlists</h2>
       <form id="addForm" autocomplete="off">
-        <input type="text" id="urlIn" placeholder="Paste playlist link (…?list=PL…)" inputmode="url">
+        <input type="text" id="urlIn" placeholder="Paste a YouTube playlist or video link" inputmode="url">
         <div class="row">
           <input type="text" id="nameIn" placeholder="Name (optional)">
           <button class="primary" type="submit">Add</button>
@@ -149,7 +149,7 @@
       <div class="foot">
         <button id="shareBtn" title="Copy a link that includes your playlists — open it on another device">Copy link with playlists</button>
       </div>
-      <p class="hint">Public or unlisted playlists only. No YouTube login needed. Playlists play in order, and the whole queue loops forever.</p>
+      <p class="hint">Add playlists or single videos (public or unlisted). No YouTube login needed. Items play in order, and the whole queue loops forever. A link with both a video and a playlist adds the playlist.</p>
     </section>
   </div>
 </div>
@@ -165,6 +165,8 @@
   };
   let state = store.load({ playlists: [], current: 0, shuffle: false, loopMode: 'all', awake: true, speed: 1, muted: false });
   const save = () => store.save(state);
+  // Items saved before single-video support have no type: they are playlists.
+  function typeOf(p) { return p && p.type === 'video' ? 'video' : 'playlist'; }
 
   // ---- Import playlists from a shared link (#p=...) ----
   try {
@@ -174,7 +176,8 @@
       const incoming = JSON.parse(json);
       if (Array.isArray(incoming)) {
         for (const p of incoming) {
-          if (p && p.id && !state.playlists.some(x => x.id === p.id)) state.playlists.push({ id: p.id, name: p.name || '' });
+          const type = p && p.type === 'video' ? 'video' : 'playlist';
+          if (p && p.id && !state.playlists.some(x => x.id === p.id && typeOf(x) === type)) state.playlists.push({ type, id: p.id, name: p.name || '' });
         }
         save();
       }
@@ -183,15 +186,26 @@
   } catch {}
 
   // ---- Parsing ----
-  function parsePlaylistId(text) {
+  // Returns { type: 'playlist' | 'video', id } or null.
+  // A link with list= is treated as the playlist; otherwise a video link is a single video.
+  function parseLink(text) {
     text = (text || '').trim();
     if (!text) return null;
+    const VID = /^[A-Za-z0-9_-]{11}$/;
+    if (VID.test(text)) return { type: 'video', id: text };
+    if (/^[A-Za-z0-9_-]{12,}$/.test(text)) return { type: 'playlist', id: text };
     try {
-      const u = new URL(text.startsWith('http') ? text : 'https://' + text);
-      const l = u.searchParams.get('list');
-      if (l) return l;
+      const u = new URL(/^https?:\/\//i.test(text) ? text : 'https://' + text);
+      const list = u.searchParams.get('list');
+      if (list) return { type: 'playlist', id: list };
+      let v = u.searchParams.get('v');
+      if (!v && /(^|\.)youtu\.be$/i.test(u.hostname)) v = u.pathname.split('/')[1];
+      if (!v) {
+        const m = u.pathname.match(/^\/(?:shorts|live|embed|v)\/([A-Za-z0-9_-]{11})/);
+        if (m) v = m[1];
+      }
+      if (v && VID.test(v)) return { type: 'video', id: v };
     } catch {}
-    if (/^[A-Za-z0-9_-]{12,}$/.test(text)) return text;
     return null;
   }
 
@@ -207,7 +221,7 @@
   els.loopMode.value = state.loopMode;
   els.awake.checked = state.awake;
 
-  const nameOf = (p, i) => p.name || `Playlist ${i + 1}`;
+  const nameOf = (p, i) => p.name || `${typeOf(p) === 'video' ? 'Video' : 'Playlist'} ${i + 1}`;
   const ICON = {
     up: '<svg viewBox="0 0 24 24"><path d="M7 14l5-5 5 5z"/></svg>',
     down: '<svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>',
@@ -224,7 +238,7 @@
       meta.title = 'Play this playlist';
       meta.innerHTML = `<div class="name"></div><div class="id"></div>`;
       meta.querySelector('.name').textContent = nameOf(p, i);
-      meta.querySelector('.id').textContent = p.id;
+      meta.querySelector('.id').textContent = (typeOf(p) === 'video' ? 'Video · ' : 'Playlist · ') + p.id;
       if (i === state.current && isPlaying) meta.querySelector('.name').insertAdjacentHTML('beforeend', ' <span class="badge">● playing</span>');
       meta.onclick = () => { state.current = i; save(); loadCurrent(true); };
       li.appendChild(meta);
@@ -271,13 +285,14 @@
 
   $('#addForm').addEventListener('submit', (e) => {
     e.preventDefault();
-    const id = parsePlaylistId($('#urlIn').value);
-    if (!id) { els.msg.textContent = 'That doesn\'t look like a playlist link. It should contain "list=".'; els.msg.className = 'msg err'; return; }
-    if (state.playlists.some(p => p.id === id)) { els.msg.textContent = 'That playlist is already in the queue.'; els.msg.className = 'msg err'; return; }
-    state.playlists.push({ id, name: $('#nameIn').value.trim() });
+    const item = parseLink($('#urlIn').value);
+    if (!item) { els.msg.textContent = 'That doesn\'t look like a YouTube video or playlist link.'; els.msg.className = 'msg err'; return; }
+    const kind = item.type === 'video' ? 'video' : 'playlist';
+    if (state.playlists.some(p => p.id === item.id && typeOf(p) === item.type)) { els.msg.textContent = `That ${kind} is already in the queue.`; els.msg.className = 'msg err'; return; }
+    state.playlists.push({ type: item.type, id: item.id, name: $('#nameIn').value.trim() });
     save();
     $('#urlIn').value = ''; $('#nameIn').value = '';
-    els.msg.textContent = 'Added.'; els.msg.className = 'msg';
+    els.msg.textContent = `Added ${kind}.`; els.msg.className = 'msg';
     render();
     if (ready && state.playlists.length === 1) { state.current = 0; loadCurrent(false); }
   });
@@ -339,9 +354,14 @@
   function loadCurrent(autoplay) {
     const p = state.playlists[state.current];
     if (!p || !ready) return;
-    const opts = { list: p.id, listType: 'playlist', index: 0 };
-    pendingShuffle = state.shuffle;
-    autoplay ? player.loadPlaylist(opts) : player.cuePlaylist(opts);
+    if (typeOf(p) === 'video') {
+      pendingShuffle = false;
+      autoplay ? player.loadVideoById(p.id) : player.cueVideoById(p.id);
+    } else {
+      const opts = { list: p.id, listType: 'playlist', index: 0 };
+      pendingShuffle = state.shuffle;
+      autoplay ? player.loadPlaylist(opts) : player.cuePlaylist(opts);
+    }
     setNow(nameOf(p, state.current), 'Loading…', '');
     render();
     if (autoplay) armNudge();
@@ -365,11 +385,17 @@
     let title = '';
     try { title = (player.getVideoData() || {}).title || ''; } catch {}
     let pos = '';
-    try {
-      const list = player.getPlaylist();
-      const idx = player.getPlaylistIndex();
-      if (list && idx >= 0) pos = `Track ${idx + 1} / ${list.length}`;
-    } catch {}
+    if (typeOf(p) === 'video') {
+      pos = 'Single video';
+      // Name an unnamed video after its YouTube title the first time it loads.
+      if (p && !p.name && title) { p.name = title; save(); }
+    } else {
+      try {
+        const list = player.getPlaylist();
+        const idx = player.getPlaylistIndex();
+        if (list && idx >= 0) pos = `Track ${idx + 1} / ${list.length}`;
+      } catch {}
+    }
     setNow(p ? nameOf(p, state.current) : '—', title || 'Ready', pos);
   }
 
@@ -392,15 +418,19 @@
       isPlaying = false;
     } else if (e.data === S.ENDED) {
       isPlaying = false;
-      let atEnd = true;
-      try {
-        const list = player.getPlaylist();
-        const idx = player.getPlaylistIndex();
-        atEnd = !list || idx >= list.length - 1;
-      } catch {}
-      if (atEnd) nextPlaylist();
+      if (atLastTrack()) nextPlaylist();
     }
     updateNow(); render();
+  }
+
+  // True when the current item has nothing after this track (a single video, or the last track of a playlist).
+  function atLastTrack() {
+    if (typeOf(state.playlists[state.current]) === 'video') return true;
+    try {
+      const list = player.getPlaylist();
+      const idx = player.getPlaylistIndex();
+      return !list || idx >= list.length - 1;
+    } catch { return true; }
   }
 
   function onError(e) {
@@ -408,9 +438,7 @@
     errorStreak++;
     if (errorStreak > 25) { setNow('Stopped', 'Too many videos in a row failed to play. Check your playlists.', ''); return; }
     setTimeout(() => {
-      let list = null, idx = -1;
-      try { list = player.getPlaylist(); idx = player.getPlaylistIndex(); } catch {}
-      if (e.data === 2 || !list || idx >= list.length - 1) nextPlaylist();
+      if (e.data === 2 || atLastTrack()) nextPlaylist();
       else player.nextVideo();
     }, 1200);
   }
@@ -429,12 +457,14 @@
     if (e.key.toLowerCase() === 'm' && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) $('#muteBtn').click();
   });
   $('#playBtn').onclick =() => { if (!ready) return; isPlaying ? player.pauseVideo() : player.playVideo(); };
-  $('#prevBtn').onclick = () => ready && player.previousVideo();
+  $('#prevBtn').onclick = () => {
+    if (!ready) return;
+    if (typeOf(state.playlists[state.current]) === 'video') player.seekTo(0, true);
+    else player.previousVideo();
+  };
   $('#nextBtn').onclick = () => {
     if (!ready) return;
-    let list = null, idx = -1;
-    try { list = player.getPlaylist(); idx = player.getPlaylistIndex(); } catch {}
-    if (list && idx >= list.length - 1) nextPlaylist(); else player.nextVideo();
+    if (atLastTrack()) nextPlaylist(); else player.nextVideo();
   };
   $('#nextPlBtn').onclick = () => {
     if (!state.playlists.length) return;

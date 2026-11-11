@@ -1,7 +1,7 @@
 // Keeps a copy of the app on the device so it opens from the Home Screen
 // without needing the website it was installed from.
 // Bump VERSION whenever you change index.html so devices pick up the update.
-const VERSION = 'looper-v4';
+const VERSION = 'looper-v5';
 const APP_FILES = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
